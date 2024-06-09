@@ -1,0 +1,86 @@
+gcloud dataproc clusters create ${CLUSTER_NAME} \
+--enable-component-gateway --region ${REGION} --subnet default \
+--master-machine-type n1-standard-2 --master-boot-disk-size 50 \
+--num-workers 2 --worker-machine-type n1-standard-2 --worker-boot-disk-size 50 \
+--image-version 2.1-debian11 --optional-components ZEPPELIN,ZOOKEEPER \
+--project ${PROJECT_ID} --max-age=2h \
+--metadata "run-on-master=true" \
+--initialization-actions \
+gs://goog-dataproc-initialization-actions-${REGION}/kafka/kafka.sh
+
+
+
+technical
+CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+kafka-topics.sh --list --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+
+fs -copyToLocal gs://crimes-in-chicago/
+
+
+kafka-topics.sh --create --topic crimes-input --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+kafka-topics.sh --create --topic crimes-output --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+kafka-topics.sh --create --topic anomalies-output --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+
+
+producent
+
+mkdir testData
+mv testData.csv testData 
+CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+java -cp /usr/lib/kafka/libs/*:KafkaProducer.jar \
+ com.example.bigdata.TestProducer testData 15 crimes-input 1 ${CLUSTER_NAME}-w-0:9092
+ 
+ 
+ konsument
+CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+kafka-console-consumer.sh \
+ --bootstrap-server ${CLUSTER_NAME}-w-0:9092 \
+ --topic crimes-input --from-beginning
+ 
+ CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+kafka-console-consumer.sh \
+ --bootstrap-server ${CLUSTER_NAME}-w-0:9092 \
+ --topic crimes-output --from-beginning
+ 
+  CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+kafka-console-consumer.sh \
+ --bootstrap-server ${CLUSTER_NAME}-w-0:9092 \
+ --topic anomalies-output --from-beginning
+ 
+ version only with aggregation
+ CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+java -cp /usr/lib/kafka/libs/*:CrimeStatsApp.jar \
+ CrimeStatsApp ${CLUSTER_NAME}-w-0:9092 crimes-input crimes-output Chicago_Police_Department_-_Illinois_Uniform_Crime_Reporting__IUCR__Codes.csv
+ 
+ with anomaly
+ CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
+java -cp /usr/lib/kafka/libs/*:CrimeStatsApp.jar CrimeStatsApp ${CLUSTER_NAME}-w-0:9092 crimes-input crimes-output anomalies-output Chicago_Police_Department_-_Illinois_Uniform_Crime_Reporting__IUCR__Codes.csv 7 40
+
+ 
+ps aux | grep CrimeStatsApp
+chmod +x kill_all_crimestatsapp.sh 
+./kill_all_crimestatsapp.sh
+
+
+kafka-topics.sh --list --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+
+kafka-topics.sh --delete --topic crime-stats-app-KSTREAM-AGGREGATE-STATE-STORE-0000000006-changelog --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+kafka-topics.sh --delete --topic crime-stats-app-KSTREAM-AGGREGATE-STATE-STORE-0000000006-repartition --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+
+kafka-topics.sh --delete --topic crime-stats-app-windowed-crime-stats-changelog --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+kafka-topics.sh --delete --topic crime-stats-app-windowed-crime-stats-repartition --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+
+
+kafka-topics.sh --delete --topic crimes-input --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+kafka-topics.sh --delete --topic crimes-output --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+kafka-topics.sh --delete --topic anomalies-output --bootstrap-server ${CLUSTER_NAME}-w-0:9092
+
+kafka-topics.sh --create --topic crimes-input --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+kafka-topics.sh --create --topic crimes-output --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+kafka-topics.sh --create --topic anomalies-output --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+
+
+
+ 
+
+ 
