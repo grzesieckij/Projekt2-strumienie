@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="CrimeStatsApp">
+    <output-path>$PROJECT_DIR$/out/artifacts/CrimeStatsApp</output-path>
+    <root id="archive" name="CrimeStatsApp.jar">
+      <element id="module-output" name="CrimeStats" />
+    </root>
+  </artifact>
+</component>
