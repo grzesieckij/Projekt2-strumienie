@@ -61,7 +61,7 @@ ps aux | grep CrimeStatsApp
 chmod +x kill_all_crimestatsapp.sh 
 ./kill_all_crimestatsapp.sh
 
-
+ CLUSTER_NAME=$(/usr/share/google/get_metadata_value attributes/dataproc-cluster-name)
 kafka-topics.sh --list --bootstrap-server ${CLUSTER_NAME}-w-0:9092
 
 kafka-topics.sh --delete --topic crime-stats-app-KSTREAM-AGGREGATE-STATE-STORE-0000000006-changelog --bootstrap-server ${CLUSTER_NAME}-w-0:9092

@@ -67,14 +67,39 @@ public class CrimeStatsApp {
                     CrimeRecord record = parseCrimeRecord(line);
                     if (record != null) {
                         enrichCrimeRecord(record);
-                        System.out.println("Parsed Crime Record: " + record);
+//                        System.out.println("Parsed Crime Record: " + record);
                     }
                     return record;
                 })
                 .filter((key, value) -> value != null)
                 .transformValues(new CrimeRecordTimestampExtractor());
 
-        crimes.foreach((key, value) -> System.out.println("Processed Crime Record: " + value));
+//        crimes.foreach((key, value) -> System.out.println("Processed Crime Record: " + value));
+
+        KGroupedStream<String, CrimeRecord> groupedByMonthCategoryDistrict = crimes.groupBy(
+                (key, value) -> value.Month + "_" + value.PrimaryDescription + "_" + value.District,
+                Grouped.with(Serdes.String(), crimeRecordSerde)
+        );
+
+        KTable<String, CrimeStats> crimeStatsByMonthCategoryDistrict = groupedByMonthCategoryDistrict.aggregate(
+                CrimeStats::new,
+                (key, value, aggregate) -> {
+                    aggregate.Month = value.Month;
+                    aggregate.District = value.District;
+                    aggregate.PrimaryDescription = value.PrimaryDescription;
+                    aggregate.TotalCrimes++;
+                    if (value.Arrest) aggregate.Arrests++;
+                    if (value.Domestic) aggregate.DomesticCrimes++;
+                    if (isFBIReportable(value.IUCR)) aggregate.FBICrimes++;
+                    return aggregate;
+                },
+                Materialized.with(Serdes.String(), crimeStatsSerde)
+        );
+//        crimeStatsByMonthCategoryDistrict.toStream().foreach((key, value) -> System.out.println("Aggregated Crime Stats: " + key + " -> " + value));
+
+        crimeStatsByMonthCategoryDistrict.toStream().to(outputTopic, Produced.with(Serdes.String(), crimeStatsSerde));
+
+
 
         KGroupedStream<String, CrimeRecord> groupedByDistrict = crimes.groupBy(
                 (key, value) -> value.District,
@@ -99,7 +124,7 @@ public class CrimeStatsApp {
                                 .withValueSerde(crimeStatsSerde)
                 );
 
-        windowedCrimeStats.toStream().foreach((key, value) -> System.out.println("Aggregated Crime Stats: " + key + " -> " + value));
+//        windowedCrimeStats.toStream().foreach((key, value) -> System.out.println("Aggregated Crime Stats: " + key + " -> " + value));
 
         KStream<String, AnomalyRecord> anomalies = windowedCrimeStats
                 .toStream()
@@ -118,7 +143,7 @@ public class CrimeStatsApp {
                     return KeyValue.pair(anomaly.district, anomaly);
                 });
 
-        anomalies.foreach((k, v) -> System.out.printf("%s; %s\n", k, v));
+//        anomalies.foreach((k, v) -> System.out.printf("%s; %s\n", k, v));
         anomalies.to(anomaliesTopic, Produced.with(Serdes.String(), anomalyRecordSerde));
 
         KafkaStreams streams = new KafkaStreams(builder.build(), props);
